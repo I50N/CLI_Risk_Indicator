@@ -144,6 +144,9 @@
   </div>
   <div class="controls">
     <input type="text" id="search" placeholder="Search CLI...">
+    <select id="campaignFilter">
+      <option value="">All campaigns</option>
+    </select>
     <select id="bandFilter">
       <option value="">All bands</option>
     </select>
@@ -161,6 +164,7 @@
 <table id="dataTable">
   <thead>
     <tr>
+      <th data-key="campaign_name">Campaign</th>
       <th data-key="outbound_cli">CLI</th>
       <th data-key="attempt_band">Attempt Band</th>
       <th data-key="attempts">Attempts</th>
@@ -183,36 +187,22 @@
 const CSV_URL = "https://raw.githubusercontent.com/I50N/CLI_Risk_Indicator/refs/heads/main/CLI_Risk_Indicator.csv";
 
 // Embedded fallback data (used if CSV_URL is empty or fetch fails)
-const FALLBACK_CSV = `outbound_cli,attempt_band,attempts,risk_pct
-+27770977254,1,72,0.00
-+27770977254,10+,12,0.00
-+27770977254,2-3,246,15.04
-+27770977254,4-5,691,6.37
-+27770977254,6-10,3906,28.83
-+27872848841,1,68,0.00
-+27872848841,10+,3,0.00
-+27872848841,2-3,240,17.50
-+27872848841,4-5,715,6.99
-+27872848841,6-10,3972,37.29
-+27872848851,1,56,0.00
-+27872848851,10+,7,14.29
-+27872848851,2-3,224,15.63
-+27872848851,4-5,721,10.26
-+27872848851,6-10,4076,37.44
-+27872848852,1,60,0.00
-+27872848852,2-3,232,17.24
-+27872848852,4-5,698,8.74
-+27872848852,6-10,4060,37.93
-+27872848853,1,55,0.00
-+27872848853,10+,31,3.23
-+27872848853,2-3,216,14.81
-+27872848853,4-5,726,8.68
-+27872848853,6-10,4009,38.36
-Unknown,1,23,0.00
-Unknown,10+,165,0.00
-Unknown,2-3,17,0.00
-Unknown,4-5,9,0.00
-Unknown,6-10,37,0.00`;
+const FALLBACK_CSV = `campaign_name,outbound_cli,attempt_band,attempts,risk_pct
+Device Insurance,+27770977254,1,72,0.00
+Device Insurance,+27770977254,10+,12,0.00
+Device Insurance,+27770977254,2-3,246,15.04
+Device Insurance,+27770977254,4-5,691,6.37
+Device Insurance,+27770977254,6-10,3906,28.83
+Device Insurance,+27872848841,1,68,0.00
+Device Insurance,+27872848841,10+,3,0.00
+Device Insurance,+27872848841,2-3,240,17.50
+Device Insurance,+27872848841,4-5,715,6.99
+Device Insurance,+27872848841,6-10,3972,37.29
+Device Insurance,Unknown,1,23,0.00
+Device Insurance,Unknown,10+,165,0.00
+Device Insurance,Unknown,2-3,17,0.00
+Device Insurance,Unknown,4-5,9,0.00
+Device Insurance,Unknown,6-10,37,0.00`;
 
 let rows = [];
 let sortKey = null;
@@ -238,6 +228,13 @@ function riskClass(pct){
   return 'low';
 }
 
+function populateCampaignFilter(){
+  const campaigns = [...new Set(rows.map(r => r.campaign_name))];
+  const sel = document.getElementById('campaignFilter');
+  sel.innerHTML = '<option value="">All campaigns</option>' +
+    campaigns.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
 function populateBandFilter(){
   const bands = [...new Set(rows.map(r => r.attempt_band))];
   const order = ['1','2-3','4-5','6-10','10+'];
@@ -250,10 +247,12 @@ function populateBandFilter(){
 function render(){
   const search = document.getElementById('search').value.toLowerCase();
   const band = document.getElementById('bandFilter').value;
+  const campaign = document.getElementById('campaignFilter').value;
 
   let filtered = rows.filter(r =>
     r.outbound_cli.toLowerCase().includes(search) &&
-    (band === '' || r.attempt_band === band)
+    (band === '' || r.attempt_band === band) &&
+    (campaign === '' || r.campaign_name === campaign)
   );
 
   if(sortKey){
@@ -270,6 +269,7 @@ function render(){
   tbody.innerHTML = filtered.map(r => {
     const cls = riskClass(r.risk_pct);
     return `<tr>
+      <td>${r.campaign_name}</td>
       <td class="cli">${r.outbound_cli}</td>
       <td>${r.attempt_band}</td>
       <td>${r.attempts.toLocaleString()}</td>
@@ -310,6 +310,7 @@ async function reload(){
   if(!CSV_URL){
     rows = parseCSV(FALLBACK_CSV);
     setStatus('Loaded embedded data (set CSV_URL to load live from GitHub).');
+    populateCampaignFilter();
     populateBandFilter();
     render();
     return;
@@ -321,17 +322,20 @@ async function reload(){
     const text = await res.text();
     rows = parseCSV(text);
     setStatus('Loaded ' + rows.length + ' rows from GitHub at ' + new Date().toLocaleTimeString());
+    populateCampaignFilter();
     populateBandFilter();
     render();
   }catch(err){
     rows = parseCSV(FALLBACK_CSV);
     setStatus('Could not load CSV_URL (' + err.message + '). Showing embedded fallback data.', true);
+    populateCampaignFilter();
     populateBandFilter();
     render();
   }
 }
 
 document.getElementById('search').addEventListener('input', render);
+document.getElementById('campaignFilter').addEventListener('change', render);
 document.getElementById('bandFilter').addEventListener('change', render);
 
 document.querySelectorAll('th[data-key]').forEach(th => {
