@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLI Risk Indicator Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1417;
+    --panel:#171d22;
+    --panel-2:#1e262c;
+    --line:#2a343b;
+    --text:#e8edf0;
+    --muted:#8aa0ab;
+    --accent:#ff6a3d;
+    --good:#3ddc97;
+    --warn:#ffc857;
+    --bad:#ff5d5d;
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+    --sans:'Inter','Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--text);
+    padding:24px;
+  }
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:16px;
+    margin-bottom:20px;
+  }
+  h1{
+    font-size:22px;
+    margin:0;
+    letter-spacing:0.5px;
+    font-weight:700;
+  }
+  h1 span{color:var(--accent);}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px;}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  input[type=text], select{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:8px 12px;
+    border-radius:6px;
+    font-family:var(--mono);
+    font-size:13px;
+  }
+  button{
+    background:var(--accent);
+    color:#1a0e08;
+    border:none;
+    padding:8px 14px;
+    border-radius:6px;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+  }
+  button:hover{opacity:0.85;}
+  .summary{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
+    gap:12px;
+    margin-bottom:20px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:14px 16px;
+  }
+  .card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .card .value{font-size:24px;font-weight:700;margin-top:6px;font-family:var(--mono);}
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+    font-size:13px;
+  }
+  th,td{
+    padding:10px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--line);
+  }
+  th{
+    background:var(--panel-2);
+    color:var(--muted);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    cursor:pointer;
+    user-select:none;
+  }
+  th:hover{color:var(--text);}
+  td.cli{font-family:var(--mono);}
+  tr:hover td{background:rgba(255,255,255,0.03);}
+  .bar-wrap{display:flex;align-items:center;gap:8px;}
+  .bar{
+    height:8px;
+    border-radius:4px;
+    background:var(--line);
+    flex:1;
+    overflow:hidden;
+    min-width:60px;
+  }
+  .bar-fill{height:100%;border-radius:4px;}
+  .pct{font-family:var(--mono);width:54px;text-align:right;}
+  .risk-low{background:var(--good);}
+  .risk-mid{background:var(--warn);}
+  .risk-high{background:var(--bad);}
+  .badge{
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:700;
+    font-family:var(--mono);
+  }
+  .badge-low{background:rgba(61,220,151,0.15);color:var(--good);}
+  .badge-mid{background:rgba(255,200,87,0.15);color:var(--warn);}
+  .badge-high{background:rgba(255,93,93,0.15);color:var(--bad);}
+  .status{font-size:12px;color:var(--muted);margin-top:8px;}
+  footer{margin-top:30px;text-align:center;color:var(--muted);font-size:11px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>CLI Risk <span>Indicator</span></h1>
+    <div class="sub">Outbound CLI risk percentage by attempt band</div>
+  </div>
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search CLI...">
+    <select id="bandFilter">
+      <option value="">All bands</option>
+    </select>
+    <button onclick="reload()">Reload data</button>
+  </div>
+</header>
+
+<div class="summary">
+  <div class="card"><div class="label">Total CLIs</div><div class="value" id="statCLIs">-</div></div>
+  <div class="card"><div class="label">Total Attempts</div><div class="value" id="statAttempts">-</div></div>
+  <div class="card"><div class="label">Avg Risk %</div><div class="value" id="statAvgRisk">-</div></div>
+  <div class="card"><div class="label">High Risk Rows (&gt;25%)</div><div class="value" id="statHigh">-</div></div>
+</div>
+
+<table id="dataTable">
+  <thead>
+    <tr>
+      <th data-key="outbound_cli">CLI</th>
+      <th data-key="attempt_band">Attempt Band</th>
+      <th data-key="attempts">Attempts</th>
+      <th data-key="risk_pct">Risk %</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div class="status" id="status"></div>
+
+<footer>
+  Ison Xperiences · CLI Risk Indicator Dashboard
+</footer>
+
+<script>
+// ---- CONFIG ----
+// Point this at the raw GitHub URL of your CSV, e.g.
+// https://raw.githubusercontent.com/<user>/<repo>/main/CLI_Risk_Indicator.csv
+const CSV_URL = "CLI_Risk_Indicator.csv";
+
+// Embedded fallback data (used if CSV_URL is empty or fetch fails)
+const FALLBACK_CSV = `outbound_cli,attempt_band,attempts,risk_pct
++27770977254,1,72,0.00
++27770977254,10+,12,0.00
++27770977254,2-3,246,15.04
++27770977254,4-5,691,6.37
++27770977254,6-10,3906,28.83
++27872848841,1,68,0.00
++27872848841,10+,3,0.00
++27872848841,2-3,240,17.50
++27872848841,4-5,715,6.99
++27872848841,6-10,3972,37.29
++27872848851,1,56,0.00
++27872848851,10+,7,14.29
++27872848851,2-3,224,15.63
++27872848851,4-5,721,10.26
++27872848851,6-10,4076,37.44
++27872848852,1,60,0.00
++27872848852,2-3,232,17.24
++27872848852,4-5,698,8.74
++27872848852,6-10,4060,37.93
++27872848853,1,55,0.00
++27872848853,10+,31,3.23
++27872848853,2-3,216,14.81
++27872848853,4-5,726,8.68
++27872848853,6-10,4009,38.36
+Unknown,1,23,0.00
+Unknown,10+,165,0.00
+Unknown,2-3,17,0.00
+Unknown,4-5,9,0.00
+Unknown,6-10,37,0.00`;
+
+let rows = [];
+let sortKey = null;
+let sortDir = 1;
+
+function parseCSV(text){
+  const lines = text.trim().split(/\r?\n/);
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.replace(/^"|"$/g,'').trim());
+    const obj = {};
+    headers.forEach((h,i) => obj[h] = vals[i]);
+    obj.outbound_cli = obj.outbound_cli === '\\0' ? 'Unknown' : obj.outbound_cli;
+    obj.attempts = parseInt(obj.attempts) || 0;
+    obj.risk_pct = parseFloat(obj.risk_pct) || 0;
+    return obj;
+  });
+}
+
+function riskClass(pct){
+  if(pct >= 25) return 'high';
+  if(pct >= 10) return 'mid';
+  return 'low';
+}
+
+function populateBandFilter(){
+  const bands = [...new Set(rows.map(r => r.attempt_band))];
+  const order = ['1','2-3','4-5','6-10','10+'];
+  bands.sort((a,b) => order.indexOf(a) - order.indexOf(b));
+  const sel = document.getElementById('bandFilter');
+  sel.innerHTML = '<option value="">All bands</option>' +
+    bands.map(b => `<option value="${b}">${b}</option>`).join('');
+}
+
+function render(){
+  const search = document.getElementById('search').value.toLowerCase();
+  const band = document.getElementById('bandFilter').value;
+
+  let filtered = rows.filter(r =>
+    r.outbound_cli.toLowerCase().includes(search) &&
+    (band === '' || r.attempt_band === band)
+  );
+
+  if(sortKey){
+    filtered.sort((a,b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if(typeof av === 'string'){ av = av.toLowerCase(); bv = bv.toLowerCase(); }
+      if(av < bv) return -1 * sortDir;
+      if(av > bv) return 1 * sortDir;
+      return 0;
+    });
+  }
+
+  const tbody = document.querySelector('#dataTable tbody');
+  tbody.innerHTML = filtered.map(r => {
+    const cls = riskClass(r.risk_pct);
+    return `<tr>
+      <td class="cli">${r.outbound_cli}</td>
+      <td>${r.attempt_band}</td>
+      <td>${r.attempts.toLocaleString()}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar"><div class="bar-fill risk-${cls}" style="width:${Math.min(r.risk_pct,100)}%"></div></div>
+          <span class="pct">${r.risk_pct.toFixed(2)}%</span>
+          <span class="badge badge-${cls}">${cls.toUpperCase()}</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateSummary(filtered);
+}
+
+function updateSummary(data){
+  const clis = new Set(data.map(r => r.outbound_cli));
+  const totalAttempts = data.reduce((s,r) => s + r.attempts, 0);
+  const weightedRisk = totalAttempts > 0
+    ? data.reduce((s,r) => s + r.attempts * r.risk_pct, 0) / totalAttempts
+    : 0;
+  const highCount = data.filter(r => r.risk_pct > 25).length;
+
+  document.getElementById('statCLIs').textContent = clis.size;
+  document.getElementById('statAttempts').textContent = totalAttempts.toLocaleString();
+  document.getElementById('statAvgRisk').textContent = weightedRisk.toFixed(2) + '%';
+  document.getElementById('statHigh').textContent = highCount;
+}
+
+function setStatus(msg, isError){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--bad)' : 'var(--muted)';
+}
+
+async function reload(){
+  if(!CSV_URL){
+    rows = parseCSV(FALLBACK_CSV);
+    setStatus('Loaded embedded data (set CSV_URL to load live from GitHub).');
+    populateBandFilter();
+    render();
+    return;
+  }
+  setStatus('Loading from ' + CSV_URL + ' ...');
+  try{
+    const res = await fetch(CSV_URL + '?t=' + Date.now());
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    rows = parseCSV(text);
+    setStatus('Loaded ' + rows.length + ' rows from GitHub at ' + new Date().toLocaleTimeString());
+    populateBandFilter();
+    render();
+  }catch(err){
+    rows = parseCSV(FALLBACK_CSV);
+    setStatus('Could not load CSV_URL (' + err.message + '). Showing embedded fallback data.', true);
+    populateBandFilter();
+    render();
+  }
+}
+
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('bandFilter').addEventListener('change', render);
+
+document.querySelectorAll('th[data-key]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if(sortKey === key) sortDir *= -1;
+    else { sortKey = key; sortDir = 1; }
+    render();
+  });
+});
+
+reload();
+</script>
+
+</body>
+</html>
