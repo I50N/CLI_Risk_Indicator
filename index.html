@@ -132,6 +132,37 @@
   .badge-mid{background:rgba(255,200,87,0.15);color:var(--warn);}
   .badge-high{background:rgba(255,93,93,0.15);color:var(--bad);}
   .status{font-size:12px;color:var(--muted);margin-top:8px;}
+  .chart-section{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px;
+    margin-bottom:20px;
+  }
+  .chart-controls{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:14px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .chart-wrap{
+    display:flex;
+    align-items:center;
+    gap:24px;
+    flex-wrap:wrap;
+  }
+  .chart-legend{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    font-size:13px;
+  }
+  .legend-row{display:flex;align-items:center;gap:8px;}
+  .legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
+  .legend-label{color:var(--muted);min-width:90px;}
+  .legend-val{font-family:var(--mono);font-weight:700;}
   footer{margin-top:30px;text-align:center;color:var(--muted);font-size:11px;}
 </style>
 </head>
@@ -159,6 +190,17 @@
   <div class="card"><div class="label">Total Attempts</div><div class="value" id="statAttempts">-</div></div>
   <div class="card"><div class="label">Avg Risk %</div><div class="value" id="statAvgRisk">-</div></div>
   <div class="card"><div class="label">High Risk Rows (&gt;25%)</div><div class="value" id="statHigh">-</div></div>
+</div>
+
+<div class="chart-section">
+  <div class="chart-controls">
+    <label for="chartCli">Risk breakdown for:</label>
+    <select id="chartCli"></select>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="riskDoughnut" width="220" height="220"></canvas>
+    <div class="chart-legend" id="chartLegend"></div>
+  </div>
 </div>
 
 <table id="dataTable">
@@ -244,6 +286,82 @@ function populateBandFilter(){
     bands.map(b => `<option value="${b}">${b}</option>`).join('');
 }
 
+function populateChartCli(){
+  const clis = [...new Set(rows.map(r => r.outbound_cli))];
+  const sel = document.getElementById('chartCli');
+  const prev = sel.value;
+  sel.innerHTML = clis.map(c => `<option value="${c}">${c}</option>`).join('');
+  if(clis.includes(prev)) sel.value = prev;
+}
+
+function drawDoughnut(){
+  const cli = document.getElementById('chartCli').value;
+  const data = rows.filter(r => r.outbound_cli === cli);
+
+  const totalAttempts = data.reduce((s,r) => s + r.attempts, 0);
+  const riskyAttempts = data.reduce((s,r) => s + r.attempts * (r.risk_pct/100), 0);
+  const normalAttempts = totalAttempts - riskyAttempts;
+
+  const riskyPct = totalAttempts > 0 ? (riskyAttempts/totalAttempts*100) : 0;
+  const normalPct = 100 - riskyPct;
+
+  const canvas = document.getElementById('riskDoughnut');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  const cx = w/2, cy = h/2, rOuter = 90, rInner = 55;
+  let startAngle = -Math.PI/2;
+
+  const segments = [
+    { value: riskyPct, color: '#ff5d5d', label: 'Risky outcomes' },
+    { value: normalPct, color: '#3ddc97', label: 'Normal outcomes' }
+  ];
+
+  segments.forEach(seg => {
+    const angle = (seg.value/100) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,rOuter,startAngle,startAngle+angle);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    startAngle += angle;
+  });
+
+  // cut out center
+  ctx.beginPath();
+  ctx.arc(cx,cy,rInner,0,Math.PI*2);
+  ctx.fillStyle = '#171d22';
+  ctx.fill();
+
+  // center text
+  ctx.fillStyle = '#e8edf0';
+  ctx.font = 'bold 22px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(riskyPct.toFixed(1)+'%', cx, cy-8);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#8aa0ab';
+  ctx.fillText('risky', cx, cy+12);
+
+  // legend
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = segments.map(seg => `
+    <div class="legend-row">
+      <div class="legend-swatch" style="background:${seg.color}"></div>
+      <div class="legend-label">${seg.label}</div>
+      <div class="legend-val">${seg.value.toFixed(2)}%</div>
+    </div>
+  `).join('') + `
+    <div class="legend-row">
+      <div class="legend-swatch" style="background:transparent"></div>
+      <div class="legend-label">Total attempts</div>
+      <div class="legend-val">${totalAttempts.toLocaleString()}</div>
+    </div>
+  `;
+}
+
 function render(){
   const search = document.getElementById('search').value.toLowerCase();
   const band = document.getElementById('bandFilter').value;
@@ -284,6 +402,8 @@ function render(){
   }).join('');
 
   updateSummary(filtered);
+  populateChartCli();
+  drawDoughnut();
 }
 
 function updateSummary(data){
@@ -336,6 +456,7 @@ async function reload(){
 
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('campaignFilter').addEventListener('change', render);
+document.getElementById('chartCli').addEventListener('change', drawDoughnut);
 document.getElementById('bandFilter').addEventListener('change', render);
 
 document.querySelectorAll('th[data-key]').forEach(th => {
