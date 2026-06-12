@@ -163,6 +163,9 @@
   .legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
   .legend-label{color:var(--muted);min-width:90px;}
   .legend-val{font-family:var(--mono);font-weight:700;}
+  .band-chart-wrap{width:100%;}
+  .band-chart-wrap canvas{width:100%;max-width:100%;height:auto;}
+  .band-legend{display:flex;gap:20px;justify-content:center;margin-top:8px;}
   footer{margin-top:30px;text-align:center;color:var(--muted);font-size:11px;}
 </style>
 </head>
@@ -201,6 +204,17 @@
     <canvas id="riskDoughnut" width="220" height="220"></canvas>
     <div class="chart-legend" id="chartLegend"></div>
   </div>
+  <div class="band-chart-wrap">
+    <div class="chart-controls" style="margin-bottom:8px;margin-top:18px;">
+      <span>Outcome breakdown by attempt band</span>
+    </div>
+    <canvas id="bandBarChart" width="700" height="220"></canvas>
+    <div class="band-legend">
+      <div class="legend-row"><div class="legend-swatch" style="background:#ff5d5d"></div><div class="legend-label">Auto Dial Disc.</div></div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#ffc857"></div><div class="legend-label">Temp Disconnected</div></div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#ff8c42"></div><div class="legend-label">Congested</div></div>
+    </div>
+  </div>
 </div>
 
 <table id="dataTable">
@@ -229,22 +243,30 @@
 const CSV_URL = "https://raw.githubusercontent.com/I50N/CLI_Risk_Indicator/refs/heads/main/CLI_Risk_Indicator.csv";
 
 // Embedded fallback data (used if CSV_URL is empty or fetch fails)
-const FALLBACK_CSV = `campaign_name,outbound_cli,attempt_band,attempts,risk_pct
-Device Insurance,+27770977254,1,72,0.00
-Device Insurance,+27770977254,10+,12,0.00
-Device Insurance,+27770977254,2-3,246,15.04
-Device Insurance,+27770977254,4-5,691,6.37
-Device Insurance,+27770977254,6-10,3906,28.83
-Device Insurance,+27872848841,1,68,0.00
-Device Insurance,+27872848841,10+,3,0.00
-Device Insurance,+27872848841,2-3,240,17.50
-Device Insurance,+27872848841,4-5,715,6.99
-Device Insurance,+27872848841,6-10,3972,37.29
-Device Insurance,Unknown,1,23,0.00
-Device Insurance,Unknown,10+,165,0.00
-Device Insurance,Unknown,2-3,17,0.00
-Device Insurance,Unknown,4-5,9,0.00
-Device Insurance,Unknown,6-10,37,0.00`;
+const FALLBACK_CSV = `campaign_name,outbound_cli,attempt_band,attempts,auto_dial_disc,temp_disc,congested,auto_dial_pct,temp_disc_pct,congested_pct,risk_pct
+NMS Waiver,+27770977258,1,291,81,0,0,27.84,0,0,27.84
+NMS Waiver,+27770977258,10+,145,2,1,0,1.38,0.69,0,2.07
+NMS Waiver,+27770977258,2-3,1265,337,19,0,26.64,1.5,0,28.14
+NMS Waiver,+27770977258,4-5,1959,285,29,0,14.55,1.48,0,16.03
+NMS Waiver,+27770977258,6-10,31051,3141,1168,0,10.12,3.76,0,13.88
+NMS Waiver,+27770977259,1,251,63,0,0,25.1,0,0,25.1
+NMS Waiver,+27770977259,10+,168,5,2,0,2.98,1.19,0,4.17
+NMS Waiver,+27770977259,2-3,1288,367,13,0,28.49,1.01,0,29.5
+NMS Waiver,+27770977259,4-5,1930,276,24,0,14.3,1.24,0,15.54
+NMS Waiver,+27770977259,6-10,31246,3025,1265,0,9.68,4.05,0,13.73
+NMS Waiver,+27872848832,1,271,69,0,0,25.46,0,0,25.46
+NMS Waiver,+27872848832,10+,147,2,1,0,1.36,0.68,0,2.04
+NMS Waiver,+27872848832,2-3,1364,447,31,0,32.77,2.27,0,35.04
+NMS Waiver,+27872848832,4-5,1901,361,67,0,18.99,3.52,0,22.51
+NMS Waiver,+27872848832,6-10,31342,3060,2067,2,9.76,6.59,0.01,16.36
+NMS Waiver,+27872848846,1,233,72,0,0,30.9,0,0,30.9
+NMS Waiver,+27872848846,10+,137,4,2,0,2.92,1.46,0,4.38
+NMS Waiver,+27872848846,2-3,1346,399,39,0,29.64,2.9,0,32.54
+NMS Waiver,+27872848846,4-5,1899,332,93,0,17.48,4.9,0,22.38
+NMS Waiver,+27872848846,6-10,31254,2980,2219,2,9.53,7.1,0.01,16.64
+NMS Waiver,+27872848847,1,235,77,0,0,32.77,0,0,32.77
+NMS Waiver,+27872848847,10+,156,1,3,0,0.64,1.92,0,2.56
+NMS Waiver,+27872848847,2-3,1234,378,37,0,30.63,3,0,33.63`;
 
 let rows = [];
 let sortKey = null;
@@ -260,6 +282,9 @@ function parseCSV(text){
     obj.outbound_cli = obj.outbound_cli === '\\0' ? 'Unknown' : obj.outbound_cli;
     obj.attempts = parseInt(obj.attempts) || 0;
     obj.risk_pct = parseFloat(obj.risk_pct) || 0;
+    obj.auto_dial_pct = parseFloat(obj.auto_dial_pct) || 0;
+    obj.temp_disc_pct = parseFloat(obj.temp_disc_pct) || 0;
+    obj.congested_pct = parseFloat(obj.congested_pct) || 0;
     return obj;
   });
 }
@@ -299,11 +324,12 @@ function drawDoughnut(){
   const data = rows.filter(r => r.outbound_cli === cli);
 
   const totalAttempts = data.reduce((s,r) => s + r.attempts, 0);
-  const riskyAttempts = data.reduce((s,r) => s + r.attempts * (r.risk_pct/100), 0);
-  const normalAttempts = totalAttempts - riskyAttempts;
+  const auto = data.reduce((s,r) => s + r.attempts * (r.auto_dial_pct/100), 0);
+  const temp = data.reduce((s,r) => s + r.attempts * (r.temp_disc_pct/100), 0);
+  const cong = data.reduce((s,r) => s + r.attempts * (r.congested_pct/100), 0);
+  const normal = totalAttempts - auto - temp - cong;
 
-  const riskyPct = totalAttempts > 0 ? (riskyAttempts/totalAttempts*100) : 0;
-  const normalPct = 100 - riskyPct;
+  const toPct = v => totalAttempts > 0 ? (v/totalAttempts*100) : 0;
 
   const canvas = document.getElementById('riskDoughnut');
   const ctx = canvas.getContext('2d');
@@ -314,11 +340,14 @@ function drawDoughnut(){
   let startAngle = -Math.PI/2;
 
   const segments = [
-    { value: riskyPct, color: '#ff5d5d', label: 'Risky outcomes' },
-    { value: normalPct, color: '#3ddc97', label: 'Normal outcomes' }
+    { value: toPct(auto), color: '#ff5d5d', label: 'Auto Dial Disc.' },
+    { value: toPct(temp), color: '#ffc857', label: 'Temp Disconnected' },
+    { value: toPct(cong), color: '#ff8c42', label: 'Congested' },
+    { value: toPct(normal), color: '#3ddc97', label: 'Normal outcomes' }
   ];
 
   segments.forEach(seg => {
+    if(seg.value <= 0) return;
     const angle = (seg.value/100) * Math.PI * 2;
     ctx.beginPath();
     ctx.moveTo(cx,cy);
@@ -336,14 +365,15 @@ function drawDoughnut(){
   ctx.fill();
 
   // center text
+  const riskTotal = toPct(auto+temp+cong);
   ctx.fillStyle = '#e8edf0';
   ctx.font = 'bold 22px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(riskyPct.toFixed(1)+'%', cx, cy-8);
+  ctx.fillText(riskTotal.toFixed(1)+'%', cx, cy-8);
   ctx.font = '11px sans-serif';
   ctx.fillStyle = '#8aa0ab';
-  ctx.fillText('risky', cx, cy+12);
+  ctx.fillText('total risk', cx, cy+12);
 
   // legend
   const legend = document.getElementById('chartLegend');
@@ -360,6 +390,60 @@ function drawDoughnut(){
       <div class="legend-val">${totalAttempts.toLocaleString()}</div>
     </div>
   `;
+}
+
+function drawBandChart(){
+  const cli = document.getElementById('chartCli').value;
+  const order = ['1','2-3','4-5','6-10','10+'];
+  const data = rows
+    .filter(r => r.outbound_cli === cli)
+    .sort((a,b) => order.indexOf(a.attempt_band) - order.indexOf(b.attempt_band));
+
+  const canvas = document.getElementById('bandBarChart');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  if(data.length === 0) return;
+
+  const margin = {top:20,right:20,bottom:40,left:50};
+  const chartW = w - margin.left - margin.right;
+  const chartH = h - margin.top - margin.bottom;
+  const barSlot = chartW / data.length;
+  const barW = barSlot * 0.5;
+
+  // y axis gridlines (0-100%)
+  ctx.strokeStyle = '#2a343b';
+  ctx.fillStyle = '#8aa0ab';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  for(let p=0; p<=100; p+=25){
+    const y = margin.top + chartH - (p/100)*chartH;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, y);
+    ctx.lineTo(w-margin.right, y);
+    ctx.stroke();
+    ctx.fillText(p+'%', margin.left-8, y+3);
+  }
+
+  const colors = { auto_dial_pct:'#ff5d5d', temp_disc_pct:'#ffc857', congested_pct:'#ff8c42' };
+
+  data.forEach((r,i) => {
+    const x = margin.left + i*barSlot + (barSlot-barW)/2;
+    let yTop = margin.top + chartH;
+    ['auto_dial_pct','temp_disc_pct','congested_pct'].forEach(key => {
+      const val = r[key];
+      const segH = (val/100) * chartH;
+      ctx.fillStyle = colors[key];
+      ctx.fillRect(x, yTop-segH, barW, segH);
+      yTop -= segH;
+    });
+    // x label
+    ctx.fillStyle = '#8aa0ab';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(r.attempt_band, x+barW/2, margin.top+chartH+18);
+  });
 }
 
 function render(){
@@ -404,6 +488,7 @@ function render(){
   updateSummary(filtered);
   populateChartCli();
   drawDoughnut();
+  drawBandChart();
 }
 
 function updateSummary(data){
@@ -456,7 +541,7 @@ async function reload(){
 
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('campaignFilter').addEventListener('change', render);
-document.getElementById('chartCli').addEventListener('change', drawDoughnut);
+document.getElementById('chartCli').addEventListener('change', () => { drawDoughnut(); drawBandChart(); });
 document.getElementById('bandFilter').addEventListener('change', render);
 
 document.querySelectorAll('th[data-key]').forEach(th => {
