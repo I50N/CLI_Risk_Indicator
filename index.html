@@ -164,8 +164,16 @@
   .legend-label{color:var(--muted);min-width:90px;}
   .legend-val{font-family:var(--mono);font-weight:700;}
   .band-chart-wrap{width:100%;}
-  .band-chart-wrap canvas{width:100%;max-width:100%;height:auto;}
   .band-legend{display:flex;gap:20px;justify-content:center;margin-top:8px;}
+  .section-title{
+    font-size:14px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:1px;
+    margin:28px 0 12px;
+    font-weight:700;
+  }
+  .table-controls{margin-bottom:12px;}
   footer{margin-top:30px;text-align:center;color:var(--muted);font-size:11px;}
 </style>
 </head>
@@ -177,13 +185,6 @@
     <div class="sub">Outbound CLI risk percentage by attempt band</div>
   </div>
   <div class="controls">
-    <input type="text" id="search" placeholder="Search CLI...">
-    <select id="campaignFilter">
-      <option value="">All campaigns</option>
-    </select>
-    <select id="bandFilter">
-      <option value="">All bands</option>
-    </select>
     <button onclick="reload()">Reload data</button>
   </div>
 </header>
@@ -195,6 +196,7 @@
   <div class="card"><div class="label">High Risk Rows (&gt;25%)</div><div class="value" id="statHigh">-</div></div>
 </div>
 
+<h2 class="section-title">CLI Risk Breakdown</h2>
 <div class="chart-section">
   <div class="chart-controls">
     <label for="chartCli">Risk breakdown for:</label>
@@ -208,13 +210,24 @@
     <div class="chart-controls" style="margin-bottom:8px;margin-top:18px;">
       <span>Outcome breakdown by attempt band</span>
     </div>
-    <canvas id="bandBarChart" width="700" height="220"></canvas>
+    <canvas id="bandBarChart"></canvas>
     <div class="band-legend">
       <div class="legend-row"><div class="legend-swatch" style="background:#ff5d5d"></div><div class="legend-label">Auto Dial Disc.</div></div>
       <div class="legend-row"><div class="legend-swatch" style="background:#ffc857"></div><div class="legend-label">Temp Disconnected</div></div>
       <div class="legend-row"><div class="legend-swatch" style="background:#ff8c42"></div><div class="legend-label">Congested</div></div>
     </div>
   </div>
+</div>
+
+<h2 class="section-title">All CLI Data</h2>
+<div class="controls table-controls">
+  <input type="text" id="search" placeholder="Search CLI...">
+  <select id="campaignFilter">
+    <option value="">All campaigns</option>
+  </select>
+  <select id="bandFilter">
+    <option value="">All bands</option>
+  </select>
 </div>
 
 <table id="dataTable">
@@ -333,7 +346,14 @@ function drawDoughnut(){
 
   const canvas = document.getElementById('riskDoughnut');
   const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
+  const dpr = window.devicePixelRatio || 1;
+  const cssSize = 220;
+  canvas.width = cssSize * dpr;
+  canvas.height = cssSize * dpr;
+  canvas.style.width = cssSize + 'px';
+  canvas.style.height = cssSize + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cssSize, h = cssSize;
   ctx.clearRect(0,0,w,h);
 
   const cx = w/2, cy = h/2, rOuter = 90, rInner = 55;
@@ -401,7 +421,15 @@ function drawBandChart(){
 
   const canvas = document.getElementById('bandBarChart');
   const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 700;
+  const cssH = 220;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cssW, h = cssH;
   ctx.clearRect(0,0,w,h);
 
   if(data.length === 0) return;
@@ -542,6 +570,7 @@ async function reload(){
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('campaignFilter').addEventListener('change', render);
 document.getElementById('chartCli').addEventListener('change', () => { drawDoughnut(); drawBandChart(); });
+window.addEventListener('resize', () => drawBandChart());
 document.getElementById('bandFilter').addEventListener('change', render);
 
 document.querySelectorAll('th[data-key]').forEach(th => {
